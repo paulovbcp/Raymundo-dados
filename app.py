@@ -18,6 +18,22 @@ from hierarchicalforecast.utils import aggregate
 def convert_df(df):
    return df.to_csv(index=False).encode('utf-8')
 
+def add_rec(df_prev, rules_categoria):
+    recs = {}
+    recs['recomendação'] = []
+    recs['categoria'] = []
+    for categoria in df_prev['Categoria agrupada'].unique():
+        rec_items = []
+        for conjunto in rules_categoria.loc[ (rules_categoria['antecedents'] == {categoria}) & (rules_categoria['confidence'] > 0.7) ].sort_values('confidence', ascending=False).loc[:, 'consequents']:
+            for item in conjunto:
+                rec_items.append(item)
+        rec_items = list(set(rec_items))
+        recs['recomendação'].append(rec_items)
+        recs['categoria'].append(categoria)
+    prev_recs = pd.DataFrame.from_dict(recs)
+
+    return df_prev.merge(prev_recs, left_on = 'Categoria agrupada', right_on='categoria'  )
+
 st.title('Envie um arquivo')
 uploaded_file = st.file_uploader("Choose a file")
 if uploaded_file is not None:
@@ -25,54 +41,65 @@ if uploaded_file is not None:
     print("LENDO OS DADOS")
 
     bytes_data = uploaded_file.getvalue()
-    df = pd.read_csv(uploaded_file, sep=',')
+    df = pd.read_csv(uploaded_file, sep=';')
 
     if len(df) == 0:
         st.write('DataFrame vazio!')
+
+    if 'Mês-ano' not in df.columns:
+        st.write('A planilha precisa de uma coluna chamada Mês-ano com as datas')
+    
+    if 'QTDE_Total' not in df.columns:
+        st.write('A planilha precisa de uma coluna chamada QTDE_Total com o volume vendido')
 
     if len(df) > 0:
         st.write('## Dados enviados')
         st.write( df.head(5) )
 
+    ds_colname = 'Mês-ano'
+    y_colname = 'QTDE_Total'
     print(df.columns)
-    ds_colname = st.selectbox(
-    'Escolha a coluna da data?',
-    (df.columns))
+    #ds_colname = st.selectbox(
+    #'Escolha a coluna da data?',
+    #(df.columns))
 
-    y_colname = st.selectbox(
-    'Escolha a coluna do valor a ser previsto',
-    (df.columns))
+    #y_colname = st.selectbox(
+    #'Escolha a coluna do valor a ser previsto',
+    #(df.columns))
 
-    hierarquias = []
-    hierarquia = st.multiselect(
-    'Escolha a primeira hierarquia:',
-    df.columns)
-    if len(hierarquia) > 0:
-        hierarquias.append(hierarquia)
+    #hierarquias = []
+    #hierarquia = st.multiselect(
+    #'Escolha a primeira hierarquia:',
+    #df.columns)
+    #if len(hierarquia) > 0:
+    #    hierarquias.append(hierarquia)
 
-    hierarquia = st.multiselect(
-    'Escolha a segunda hierarquia:',
-    df.columns)
-    if len(hierarquia) > 0:
-        hierarquias.append(hierarquia)
+    #hierarquia = st.multiselect(
+    #'Escolha a segunda hierarquia:',
+    #df.columns)
+    #if len(hierarquia) > 0:
+    #    hierarquias.append(hierarquia)
 
-    hierarquia = st.multiselect(
-    'Escolha a terceira hierarquia:',
-    df.columns)
-    if len(hierarquia) > 0:
-        hierarquias.append(hierarquia)
+    #hierarquia = st.multiselect(
+    #'Escolha a terceira hierarquia:',
+    #df.columns)
+    #if len(hierarquia) > 0:
+    #    hierarquias.append(hierarquia)
 
     unique_columns = []
-    for hierarquia in hierarquias:
-        for h in hierarquia:
-            if h not in unique_columns:
-                unique_columns.append(h)
+    #for hierarquia in hierarquias:
+    #    for h in hierarquia:
+    #        if h not in unique_columns:
+    #            unique_columns.append(h)
+
 
 
     if st.button('Treinar modelo'):
 
         unique_columns.append(y_colname)
         unique_columns.append(ds_colname)
+        unique_columns.append('cliente')
+        unique_columns.append('Categoria agrupada')
         df = df[unique_columns]
         df = df[ df['Mês-ano'] != '1/5/2023' ]
 
@@ -81,26 +108,27 @@ if uploaded_file is not None:
         df['Top'] = 'Total'
 
         # esses filtros tão muito hardcoded pra essa aplicação. Remover
-        df = df[df['ESTADO'].isin(df['ESTADO'].value_counts().index[ df['ESTADO'].value_counts() > 3000 ].tolist())]
-        if 'Categoria agrupada' in df.columns:
-            df = df[ ~df['Categoria agrupada'].isin(['ÁLCOOL', 'Clorados', 'Outros', 'Cloro Gel']) ]
-        if 'Canal_novo+velho' in df.columns:
-            df = df[ ~df['Canal_novo+velho'].isin(['Inativo', 'Terceirização', '(vazio)']) ]
+        #df = df[df['ESTADO'].isin(df['ESTADO'].value_counts().index[ df['ESTADO'].value_counts() > 3000 ].tolist())]
+        #if 'Categoria agrupada' in df.columns:
+        #    df = df[ ~df['Categoria agrupada'].isin(['ÁLCOOL', 'Clorados', 'Outros', 'Cloro Gel']) ]
+        #if 'Canal_novo+velho' in df.columns:
+        #    df = df[ ~df['Canal_novo+velho'].isin(['Inativo', 'Terceirização', '(vazio)']) ]
         df = df.dropna()
 
         spec = [
         ['Top'],
         #['Top', 'ESTADO'],
-        #['Top', 'Categoria agrupada'],
+        ['Top', 'Categoria agrupada'],
+        #['Top', 'cliente'],
         #['Top', 'ESTADO', 'Categoria agrupada'  ],
         #['Top', 'Canal_novo+velho', 'Categoria agrupada'],
         #['Top', 'ESTADO', 'Categoria agrupada', 'Canal_novo+velho'],
         ]
-        for hierarquia in hierarquias:
-            hierarquia.insert(0, 'Top')
-            spec.append(hierarquia)
-
-        print(spec)
+        #for hierarquia in hierarquias:
+        #    hierarquia.insert(0, 'Top')
+        #    spec.append(hierarquia)
+        hierarquias = spec
+        #print(spec)
         Y_df, S_df, tags = aggregate(df, spec)
         Y_df = Y_df.reset_index()
 
@@ -139,6 +167,8 @@ if uploaded_file is not None:
             #plt.show()
             st.pyplot(fig)
 
+        rules_categoria = pd.read_pickle('regras_recomendacoes.pkl')
+        df = add_rec(df, rules_categoria)
         csv = convert_df(df)
         st.download_button(
             "Baixar previsões",
