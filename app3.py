@@ -107,6 +107,7 @@ if uploaded_file is not None:
         df = df.rename( {ds_colname:'ds', y_colname:'y'} , axis=1)
         df['ds'] = pd.to_datetime(df['ds'], format='%d/%m/%Y')
         df['Cód Rep.'] = df['Cód Rep.'].astype(str)
+        df['Cliente'] = df['Cliente'].astype(str)
         df['Top'] = 'Total'
 
         # esses filtros tão muito hardcoded pra essa aplicação. Remover
